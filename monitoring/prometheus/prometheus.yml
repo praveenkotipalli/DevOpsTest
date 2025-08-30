@@ -1,0 +1,101 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'production-cluster'
+    environment: 'production'
+
+rule_files:
+  - "rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Node Exporter - System metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # cAdvisor - Container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # JMeter Master
+  - job_name: 'jmeter-master'
+    static_configs:
+      - targets: ['jmeter-master:1099']
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # JMeter Slave
+  - job_name: 'jmeter-slave'
+    static_configs:
+      - targets: ['jmeter-slave:1099']
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # PostgreSQL
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # Application metrics (if using Micrometer)
+  - job_name: 'application'
+    static_configs:
+      - targets: ['app:8080']
+    scrape_interval: 15s
+    metrics_path: /actuator/prometheus
+    scrape_timeout: 10s
+
+  # Jenkins metrics
+  - job_name: 'jenkins'
+    static_configs:
+      - targets: ['jenkins:8080']
+    scrape_interval: 30s
+    metrics_path: /prometheus
+    scrape_timeout: 10s
+
+  # Blackbox monitoring for HTTP endpoints
+  - job_name: 'blackbox-http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://app:8080/health
+        - http://app:8080/actuator/health
+        - http://jenkins:8080
+        - http://grafana:3000
+        - http://kibana:5601
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

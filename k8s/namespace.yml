@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    name: production
+    environment: production
+    team: devops
+  annotations:
+    description: "Production environment namespace"
+    owner: "devops-team"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    environment: production
+    team: devops
+  annotations:
+    description: "Monitoring and observability namespace"
+    owner: "devops-team"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jenkins
+  labels:
+    name: jenkins
+    environment: production
+    team: devops
+  annotations:
+    description: "Jenkins CI/CD namespace"
+    owner: "devops-team"

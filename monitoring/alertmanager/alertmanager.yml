@@ -1,0 +1,141 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: 'https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK'
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alertmanager@example.com'
+  smtp_auth_username: 'alertmanager@example.com'
+  smtp_auth_password: 'your-password'
+
+templates:
+  - '/etc/alertmanager/template/*.tmpl'
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'slack-notifications'
+  routes:
+    - match:
+        severity: critical
+      receiver: 'pager-duty-critical'
+      continue: true
+    - match:
+        severity: warning
+      receiver: 'slack-notifications'
+    - match:
+        alertname: 'HighErrorRate'
+      receiver: 'devops-team'
+      group_by: ['alertname', 'service']
+    - match:
+        alertname: 'HighResponseTime'
+      receiver: 'devops-team'
+      group_by: ['alertname', 'service']
+    - match:
+        alertname: 'ServiceDown'
+      receiver: 'pager-duty-critical'
+      group_by: ['alertname', 'service']
+      repeat_interval: 1h
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']
+
+receivers:
+  - name: 'slack-notifications'
+    slack_configs:
+      - channel: '#alerts'
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        send_resolved: true
+        actions:
+          - type: button
+            text: 'View in Grafana'
+            url: '{{ template "slack.grafana" . }}'
+          - type: button
+            text: 'View in Prometheus'
+            url: '{{ template "slack.prometheus" . }}'
+
+  - name: 'pager-duty-critical'
+    pagerduty_configs:
+      - routing_key: 'your-pagerduty-key'
+        description: '{{ template "pagerduty.description" . }}'
+        severity: '{{ if eq .GroupLabels.severity "critical" }}critical{{ else }}warning{{ end }}'
+        client: 'AlertManager'
+        client_url: '{{ template "pagerduty.clientURL" . }}'
+        details:
+          firing: '{{ template "pagerduty.firing" . }}'
+          status: '{{ template "pagerduty.status" . }}'
+          description: '{{ template "pagerduty.description" . }}'
+          severity: '{{ template "pagerduty.severity" . }}'
+          group: '{{ template "pagerduty.group" . }}'
+          labels: '{{ template "pagerduty.labels" . }}'
+          annotations: '{{ template "pagerduty.annotations" . }}'
+          startsAt: '{{ template "pagerduty.startsAt" . }}'
+          endsAt: '{{ template "pagerduty.endsAt" . }}'
+
+  - name: 'devops-team'
+    slack_configs:
+      - channel: '#devops-alerts'
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+        send_resolved: true
+        actions:
+          - type: button
+            text: 'Acknowledge'
+            url: '{{ template "slack.acknowledge" . }}'
+          - type: button
+            text: 'View in Grafana'
+            url: '{{ template "slack.grafana" . }}'
+    email_configs:
+      - to: 'devops-team@example.com'
+        send_resolved: true
+        headers:
+          subject: '{{ template "email.subject" . }}'
+
+  - name: 'webhook'
+    webhook_configs:
+      - url: 'http://webhook:5000/alert'
+        send_resolved: true
+        http_config:
+          tls_config:
+            insecure_skip_verify: true
+
+# Time intervals for different schedules
+time_intervals:
+  - name: workdays
+    time_intervals:
+      - weekdays: ['monday:friday']
+        times:
+          - start_time: 09:00
+            end_time: 17:00
+
+  - name: weekends
+    time_intervals:
+      - weekdays: ['saturday', 'sunday']
+        times:
+          - start_time: 00:00
+            end_time: 23:59
+
+  - name: after_hours
+    time_intervals:
+      - weekdays: ['monday:friday']
+        times:
+          - start_time: 17:00
+            end_time: 09:00
+      - weekdays: ['saturday', 'sunday']
+        times:
+          - start_time: 00:00
+            end_time: 23:59
+
+# Mute time intervals
+mute_time_intervals:
+  - name: maintenance_window
+    time_intervals:
+      - weekdays: ['sunday']
+        times:
+          - start_time: 02:00
+            end_time: 06:00

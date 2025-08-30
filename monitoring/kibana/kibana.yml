@@ -1,0 +1,41 @@
+# Kibana Configuration for Production DevOps Pipeline
+server:
+  name: kibana
+  host: "0.0.0.0"
+  port: 5601
+
+elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  username: ""
+  password: ""
+
+monitoring:
+  ui:
+    container:
+      elasticsearch:
+        enabled: true
+
+xpack:
+  apm:
+    ui:
+      enabled: false
+  graph:
+    enabled: false
+  ml:
+    enabled: false
+  monitoring:
+    enabled: true
+  reporting:
+    enabled: false
+  security:
+    enabled: false
+  watcher:
+    enabled: false
+
+logging:
+  root:
+    appenders: [console]
+    level: info
+
+# Remove problematic plugins.initializeTimeout setting
+# This was causing the FATAL error in Kibana 8.8.1
