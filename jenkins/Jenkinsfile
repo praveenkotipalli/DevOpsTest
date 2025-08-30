@@ -28,8 +28,8 @@ pipeline {
             }
             post {
                 always {
-                    // Publish test results
-                    publishTestResults testResultsPattern: '**/target/surefire-reports/*.xml'
+                    // Archive test results
+                    archiveArtifacts artifacts: '**/target/surefire-reports/*.xml', fingerprint: true
                 }
             }
         }
