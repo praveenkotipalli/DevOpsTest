@@ -220,26 +220,58 @@ EOF
                         echo "Using port $PORT for deployment..."
                         docker run -d --name devops-app -p $PORT:8080 devops-performance-demo:${BUILD_NUMBER}
                         
-                        echo "Waiting for app to start..."
-                        sleep 10
+                        # Verify container is running
+                        if ! docker ps | grep -q devops-app; then
+                            echo "❌ Container failed to start!"
+                            docker logs devops-app
+                            exit 1
+                        fi
+                        
+                        echo "✅ Container started successfully, waiting for Spring Boot to initialize..."
+                        
+                        echo "Waiting for app to start (giving more time for Spring Boot)..."
+                        sleep 30
                         
                         echo "Performing health check on port $PORT..."
-                        # Try curl first, then PowerShell if curl is not available
-                        if command -v curl >/dev/null 2>&1; then
-                            if curl -f http://localhost:$PORT/health; then
-                                echo "✅ Application deployed successfully on port $PORT!"
+                        # Try multiple health checks with retries
+                        MAX_RETRIES=5
+                        RETRY_COUNT=0
+                        
+                        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                            echo "Health check attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
+                            
+                            # Try curl first, then PowerShell if curl is not available
+                            if command -v curl >/dev/null 2>&1; then
+                                if curl -f --max-time 10 http://localhost:$PORT/health; then
+                                    echo "✅ Application deployed successfully on port $PORT!"
+                                    break
+                                else
+                                    echo "⚠️ Health check attempt $((RETRY_COUNT + 1)) failed, retrying in 10 seconds..."
+                                    RETRY_COUNT=$((RETRY_COUNT + 1))
+                                    if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                                        sleep 10
+                                    fi
+                                fi
                             else
-                                echo "❌ Health check failed on port $PORT!"
-                                exit 1
+                                # Use PowerShell for health check on Windows
+                                if powershell -Command "try { Invoke-WebRequest -Uri 'http://localhost:$PORT/health' -UseBasicParsing -TimeoutSec 10 | Select-Object -ExpandProperty StatusCode } catch { exit 1 }" | grep -q "200"; then
+                                    echo "✅ Application deployed successfully on port $PORT!"
+                                    break
+                                else
+                                    echo "⚠️ Health check attempt $((RETRY_COUNT + 1)) failed, retrying in 10 seconds..."
+                                    RETRY_COUNT=$((RETRY_COUNT + 1))
+                                    if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                                        sleep 10
+                                    fi
+                                fi
                             fi
-                        else
-                            # Use PowerShell for health check on Windows
-                            if powershell -Command "try { Invoke-WebRequest -Uri 'http://localhost:$PORT/health' -UseBasicParsing | Select-Object -ExpandProperty StatusCode } catch { exit 1 }" | grep -q "200"; then
-                                echo "✅ Application deployed successfully on port $PORT!"
-                            else
-                                echo "❌ Health check failed on port $PORT!"
-                                exit 1
-                            fi
+                        done
+                        
+                        if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                            echo "❌ Health check failed after $MAX_RETRIES attempts!"
+                            echo "Container logs:"
+                            docker logs devops-app
+                            exit 1
                         fi
                     '''
                 }
