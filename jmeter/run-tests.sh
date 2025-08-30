@@ -1,264 +1,195 @@
 #!/bin/bash
 
-# JMeter Performance Test Runner
-# Production-Grade DevOps Pipeline
+# JMeter Performance Test Runner with Prometheus Integration
+# This script runs JMeter tests and generates metrics for monitoring
 
 set -e
 
+echo "🚀 Starting JMeter Performance Testing with Prometheus Integration..."
+
 # Configuration
-JMETER_HOME=${JMETER_HOME:-"/opt/apache-jmeter"}
-TEST_PLANS_DIR="./test-plans"
-RESULTS_DIR="./results"
-REPORTS_DIR="./reports"
-LOGS_DIR="./logs"
+JMETER_HOME=${JMETER_HOME:-"/usr/local/apache-jmeter"}
+TEST_PLANS_DIR="test-plans"
+RESULTS_DIR="results"
+REPORTS_DIR="reports"
+METRICS_DIR="metrics"
+
+# Create directories if they don't exist
+mkdir -p "$RESULTS_DIR" "$REPORTS_DIR" "$METRICS_DIR"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# Test parameters
-HOST=${HOST:-"localhost"}
-PORT=${PORT:-"8080"}
-PROTOCOL=${PROTOCOL:-"http"}
-USERS=${USERS:-"100"}
-DURATION=${DURATION:-"300"}
-RAMPUP=${RAMPUP:-"60"}
-
-# Create directories
-mkdir -p "$RESULTS_DIR" "$REPORTS_DIR" "$LOGS_DIR"
-
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-warn() {
-    echo -e "${YELLOW}[$(date +'%Y-%M-%d %H:%M:%S')] WARNING: $1${NC}"
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}"
-    exit 1
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-# Check prerequisites
-check_prerequisites() {
-    log "Checking prerequisites..."
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to run a JMeter test
+run_jmeter_test() {
+    local test_name=$1
+    local test_file=$2
+    local output_file="$RESULTS_DIR/${test_name}.jtl"
+    local report_dir="$REPORTS_DIR/${test_name}"
     
-    if ! command -v java &> /dev/null; then
-        error "Java is not installed"
+    print_status "Running $test_name test..."
+    
+    if [ ! -f "$test_file" ]; then
+        print_error "Test file $test_file not found!"
+        return 1
     fi
     
-    if [ ! -d "$JMETER_HOME" ]; then
-        error "JMeter not found at $JMETER_HOME"
+    # Run JMeter test
+    if command -v jmeter >/dev/null 2>&1; then
+        jmeter -n \
+            -t "$test_file" \
+            -l "$output_file" \
+            -e -o "$report_dir" \
+            -Jjmeter.save.saveservice.output_format=xml \
+            -Jjmeter.save.saveservice.response_data=true \
+            -Jjmeter.save.saveservice.samplerData=true \
+            -Jjmeter.save.saveservice.requestHeaders=true \
+            -Jjmeter.save.saveservice.url=true \
+            -Jjmeter.save.saveservice.thread_counts=true \
+            -Jjmeter.save.saveservice.timestamp_format=yyyy/MM/dd HH:mm:ss.SSS
+    else
+        print_error "JMeter not found in PATH. Please install JMeter or set JMETER_HOME."
+        return 1
     fi
-    
-    log "Prerequisites check passed"
-}
-
-# Run load test
-run_load_test() {
-    local test_plan="$1"
-    local test_name="$2"
-    
-    log "Running $test_name test..."
-    
-    local timestamp=$(date +"%Y%m%d_%H%M%S")
-    local result_file="$RESULTS_DIR/${test_name}_${timestamp}.jtl"
-    local report_dir="$REPORTS_DIR/${test_name}_${timestamp}"
-    local log_file="$LOGS_DIR/${test_name}_${timestamp}.log"
-    
-    # Execute JMeter test
-    "$JMETER_HOME/bin/jmeter" \
-        -n \
-        -t "$test_plan" \
-        -l "$result_file" \
-        -e -o "$report_dir" \
-        -Jhost="$HOST" \
-        -Jport="$PORT" \
-        -Jprotocol="$PROTOCOL" \
-        -Jusers="$USERS" \
-        -Jduration="$DURATION" \
-        -Jrampup="$RAMPUP" \
-        -j "$log_file" \
-        -Jjmeter.save.saveservice.response_data=true \
-        -Jjmeter.save.saveservice.samplerData=true \
-        -Jjmeter.save.saveservice.requestHeaders=true \
-        -Jjmeter.save.saveservice.url=true \
-        -Jjmeter.save.saveservice.thread_counts=true \
-        -Jjmeter.save.saveservice.timestamp_format=yyyy/MM/dd HH:mm:ss.SSS
     
     if [ $? -eq 0 ]; then
-        log "$test_name test completed successfully"
-        log "Results: $result_file"
-        log "Report: $report_dir"
-        log "Logs: $log_file"
+        print_success "$test_name test completed successfully!"
+        print_status "Results saved to: $output_file"
+        print_status "HTML report generated at: $report_dir"
     else
-        error "$test_name test failed"
+        print_error "$test_name test failed!"
+        return 1
     fi
 }
 
-# Run stress test
-run_stress_test() {
-    log "Running stress test..."
+# Function to generate Prometheus metrics
+generate_metrics() {
+    print_status "Generating Prometheus metrics from JMeter results..."
     
-    # Increase load for stress testing
-    local stress_users=$((USERS * 2))
-    local stress_duration=$((DURATION * 2))
-    
-    local timestamp=$(date +"%Y%m%d_%H%M%S")
-    local result_file="$RESULTS_DIR/stress_test_${timestamp}.jtl"
-    local report_dir="$REPORTS_DIR/stress_test_${timestamp}"
-    local log_file="$LOGS_DIR/stress_test_${timestamp}.log"
-    
-    "$JMETER_HOME/bin/jmeter" \
-        -n \
-        -t "$TEST_PLANS_DIR/stress-test.jmx" \
-        -l "$result_file" \
-        -e -o "$report_dir" \
-        -Jhost="$HOST" \
-        -Jport="$PORT" \
-        -Jprotocol="$PROTOCOL" \
-        -Jusers="$stress_users" \
-        -Jduration="$stress_duration" \
-        -Jrampup="$RAMPUP" \
-        -j "$log_file"
-    
-    if [ $? -eq 0 ]; then
-        log "Stress test completed successfully"
+    # Check if Python 3 is available
+    if command -v python3 >/dev/null 2>&1; then
+        # Run the metrics bridge script
+        if [ -f "metrics-bridge.py" ]; then
+            python3 metrics-bridge.py
+            print_success "Prometheus metrics generated successfully!"
+        else
+            print_warning "metrics-bridge.py not found. Skipping metrics generation."
+        fi
     else
-        error "Stress test failed"
+        print_warning "Python 3 not found. Skipping metrics generation."
+        print_status "Please install Python 3 to enable metrics generation."
     fi
 }
 
-# Run spike test
-run_spike_test() {
-    log "Running spike test..."
+# Function to display test summary
+show_summary() {
+    echo ""
+    echo "📊 Performance Test Summary"
+    echo "=========================="
     
-    local timestamp=$(date +"%Y%m%d_%H%M%S")
-    local result_file="$RESULTS_DIR/spike_test_${timestamp}.jtl"
-    local report_dir="$REPORTS_DIR/spike_test_${timestamp}"
-    local log_file="$LOGS_DIR/spike_test_${timestamp}.log"
-    
-    "$JMETER_HOME/bin/jmeter" \
-        -n \
-        -t "$TEST_PLANS_DIR/spike-test.jmx" \
-        -l "$result_file" \
-        -e -o "$report_dir" \
-        -Jhost="$HOST" \
-        -Jport="$PORT" \
-        -Jprotocol="$PROTOCOL" \
-        -Jusers="$USERS" \
-        -Jduration="60" \
-        -Jrampup="10" \
-        -j "$log_file"
-    
-    if [ $? -eq 0 ]; then
-        log "Spike test completed successfully"
-    else
-        error "Spike test failed"
-    fi
-}
-
-# Generate summary report
-generate_summary() {
-    log "Generating summary report..."
-    
-    local timestamp=$(date +"%Y%m%d_%H%M%S")
-    local summary_file="$REPORTS_DIR/summary_${timestamp}.txt"
-    
-    {
-        echo "Performance Test Summary"
-        echo "========================"
-        echo "Date: $(date)"
-        echo "Host: $HOST:$PORT"
-        echo "Protocol: $PROTOCOL"
-        echo "Users: $USERS"
-        echo "Duration: $DURATION seconds"
-        echo "Ramp-up: $RAMPUP seconds"
-        echo ""
-        echo "Test Results:"
-        echo "-------------"
-        
-        for result_file in "$RESULTS_DIR"/*.jtl; do
-            if [ -f "$result_file" ]; then
-                local test_name=$(basename "$result_file" .jtl)
-                echo "- $test_name: $result_file"
+    for test_file in "$RESULTS_DIR"/*.jtl; do
+        if [ -f "$test_file" ]; then
+            test_name=$(basename "$test_file" .jtl)
+            echo ""
+            echo "Test: $test_name"
+            echo "Results: $test_file"
+            
+            # Count total requests
+            if command -v python3 >/dev/null 2>&1; then
+                total_requests=$(python3 -c "
+import csv
+import sys
+try:
+    with open('$test_file', 'r') as f:
+        reader = csv.DictReader(f)
+        count = sum(1 for row in reader)
+    print(count)
+except:
+    print('Error reading file')
+")
+                echo "Total Requests: $total_requests"
             fi
-        done
-        
-        echo ""
-        echo "Reports:"
-        echo "--------"
-        
-        for report_dir in "$REPORTS_DIR"/*/; do
+            
+            # Check if HTML report exists
+            report_dir="$REPORTS_DIR/$test_name"
             if [ -d "$report_dir" ]; then
-                echo "- $(basename "$report_dir")"
+                echo "HTML Report: $report_dir/index.html"
             fi
-        done
-    } > "$summary_file"
+        fi
+    done
     
-    log "Summary report generated: $summary_file"
+    echo ""
+    echo "📈 Prometheus Metrics"
+    echo "====================="
+    for metrics_file in "$RESULTS_DIR"/*_prometheus_metrics.txt; do
+        if [ -f "$metrics_file" ]; then
+            echo "Metrics: $metrics_file"
+        fi
+    done
 }
 
 # Main execution
 main() {
-    log "Starting JMeter Performance Test Suite"
-    log "====================================="
+    print_status "Starting JMeter Performance Testing Suite..."
     
-    check_prerequisites
+    # Check if JMeter is available
+    if ! command -v jmeter >/dev/null 2>&1; then
+        print_warning "JMeter not found in PATH. Trying to use JMETER_HOME..."
+        if [ -n "$JMETER_HOME" ] && [ -f "$JMETER_HOME/bin/jmeter" ]; then
+            export PATH="$JMETER_HOME/bin:$PATH"
+            print_status "Using JMeter from JMETER_HOME: $JMETER_HOME"
+        else
+            print_error "JMeter not found. Please install JMeter or set JMETER_HOME."
+            exit 1
+        fi
+    fi
     
-    # Run different types of tests
-    run_load_test "$TEST_PLANS_DIR/load-test.jmx" "load"
-    run_stress_test
-    run_spike_test
+    # Run tests
+    tests=(
+        "load-test:test-plans/load-test.jmx"
+        "stress-test:test-plans/stress-test.jmx"
+        "spike-test:test-plans/spike-test.jmx"
+    )
     
-    generate_summary
+    for test_spec in "${tests[@]}"; do
+        IFS=':' read -r test_name test_file <<< "$test_spec"
+        if [ -f "$test_file" ]; then
+            run_jmeter_test "$test_name" "$test_file"
+        else
+            print_warning "Test file $test_file not found. Skipping $test_name test."
+        fi
+    done
     
-    log "All tests completed successfully!"
-    log "Check $REPORTS_DIR for detailed reports"
+    # Generate metrics
+    generate_metrics
+    
+    # Show summary
+    show_summary
+    
+    print_success "🎉 All performance tests completed!"
+    print_status "Check the results directory for detailed reports and metrics."
 }
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --host)
-            HOST="$2"
-            shift 2
-            ;;
-        --port)
-            PORT="$2"
-            shift 2
-            ;;
-        --users)
-            USERS="$2"
-            shift 2
-            ;;
-        --duration)
-            DURATION="$2"
-            shift 2
-            ;;
-        --rampup)
-            RAMPUP="$2"
-            shift 2
-            ;;
-        --help)
-            echo "Usage: $0 [OPTIONS]"
-            echo "Options:"
-            echo "  --host HOST       Target host (default: localhost)"
-            echo "  --port PORT       Target port (default: 8080)"
-            echo "  --users USERS     Number of users (default: 100)"
-            echo "  --duration SEC    Test duration in seconds (default: 300)"
-            echo "  --rampup SEC      Ramp-up time in seconds (default: 60)"
-            echo "  --help            Show this help message"
-            exit 0
-            ;;
-        *)
-            error "Unknown option: $1"
-            ;;
-    esac
-done
-
-# Execute main function
+# Run main function
 main "$@"

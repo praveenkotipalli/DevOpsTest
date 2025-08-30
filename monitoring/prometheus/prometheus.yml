@@ -22,12 +22,39 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 10s
 
-  # Node Exporter - System metrics
-  - job_name: 'node-exporter'
+  # Jenkins metrics
+  - job_name: 'jenkins'
     static_configs:
-      - targets: ['node-exporter:9100']
+      - targets: ['jenkins:8080']
+    metrics_path: '/prometheus'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # JMeter metrics
+  - job_name: 'jmeter'
+    static_configs:
+      - targets: ['jmeter-master:1099']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Application metrics
+  - job_name: 'application'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: '/actuator/prometheus'
     scrape_interval: 15s
-    metrics_path: /metrics
+
+  # Docker metrics
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['localhost:9323']
+    scrape_interval: 30s
+
+  # Node metrics (if using node-exporter)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+    scrape_interval: 30s
 
   # cAdvisor - Container metrics
   - job_name: 'cadvisor'
@@ -63,22 +90,6 @@ scrape_configs:
       - targets: ['postgres:5432']
     scrape_interval: 15s
     metrics_path: /metrics
-
-  # Application metrics (if using Micrometer)
-  - job_name: 'application'
-    static_configs:
-      - targets: ['app:8080']
-    scrape_interval: 15s
-    metrics_path: /actuator/prometheus
-    scrape_timeout: 10s
-
-  # Jenkins metrics
-  - job_name: 'jenkins'
-    static_configs:
-      - targets: ['jenkins:8080']
-    scrape_interval: 30s
-    metrics_path: /prometheus
-    scrape_timeout: 10s
 
   # Blackbox monitoring for HTTP endpoints
   - job_name: 'blackbox-http'

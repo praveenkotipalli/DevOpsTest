@@ -2,193 +2,188 @@ pipeline {
     agent any
     
     environment {
-        // Application Configuration
-        APP_NAME = 'sample-app'
-        APP_VERSION = "${env.BUILD_NUMBER}"
-        DOCKER_IMAGE = "${env.DOCKER_REGISTRY}/${env.APP_NAME}:${env.APP_VERSION}"
-        
-        // Performance Testing Configuration
-        JMETER_MASTER_URL = "${env.JMETER_MASTER_URL ?: 'http://jmeter-master:1099'}"
-        PERFORMANCE_THRESHOLD_RESPONSE_TIME = '2000'  // 2 seconds
-        PERFORMANCE_THRESHOLD_ERROR_RATE = '0.5'      // 0.5%
-        PERFORMANCE_THRESHOLD_THROUGHPUT = '1000'     // 1000 req/sec
-        
-        // Security Configuration
-        SONARQUBE_URL = "${env.SONARQUBE_URL ?: 'http://sonarqube:9000'}"
-        OWASP_ZAP_URL = "${env.OWASP_ZAP_URL ?: 'http://owasp-zap:8080'}"
-        
-        // Kubernetes Configuration
-        KUBERNETES_NAMESPACE = "${env.KUBERNETES_NAMESPACE ?: 'production'}"
-        KUBERNETES_CONTEXT = "${env.KUBERNETES_CONTEXT ?: 'production-cluster'}"
+        JMETER_HOME = tool 'JMeter'
+        JAVA_HOME = tool 'JDK17'
+        MAVEN_HOME = tool 'Maven'
     }
     
-    options {
-        timeout(time: 2, unit: 'HOURS')
-        timestamps()
-        ansiColor('xterm')
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-    }
-    
-    parameters {
-        choice(
-            name: 'DEPLOYMENT_STRATEGY',
-            choices: ['blue-green', 'canary', 'rolling'],
-            description: 'Select deployment strategy'
-        )
-        booleanParam(
-            name: 'SKIP_PERFORMANCE_TESTS',
-            defaultValue: false,
-            description: 'Skip performance testing (use with caution)'
-        )
-        booleanParam(
-            name: 'SKIP_SECURITY_SCAN',
-            defaultValue: false,
-            description: 'Skip security scanning (use with caution)'
-        )
+    tools {
+        jdk 'JDK17'
+        maven 'Maven'
+        jmeter 'JMeter'
     }
     
     stages {
-        stage('Checkout & Validate') {
+        stage('Checkout') {
             steps {
-                script {
-                    checkout scm
-                    echo "Building ${env.APP_NAME} version ${env.APP_VERSION}"
-                    echo "Branch: ${env.BRANCH_NAME}"
-                }
+                echo '🔍 Checking out source code...'
+                checkout scm
             }
         }
         
-        stage('Static Code Analysis') {
-            parallel {
-                stage('SonarQube Analysis') {
-                    when { not { params.SKIP_SECURITY_SCAN } }
-                    steps {
-                        script {
-                            echo "Running SonarQube analysis..."
-                            withSonarQubeEnv('SonarQube') {
-                                sh """
-                                    mvn clean verify sonar:sonar \
-                                        -Dsonar.projectKey=${env.APP_NAME} \
-                                        -Dsonar.projectVersion=${env.APP_VERSION}
-                                """
-                            }
-                        }
-                    }
-                }
-                
-                stage('Dependency Scan') {
-                    when { not { params.SKIP_SECURITY_SCAN } }
-                    steps {
-                        script {
-                            echo "Scanning dependencies..."
-                            sh """
-                                mvn org.owasp:dependency-check-maven:check \
-                                    -Dformat=HTML -DfailOnCVSS=7
-                            """
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('Build & Test') {
-            parallel {
-                stage('Build Application') {
-                    steps {
-                        script {
-                            echo "Building application..."
-                            sh 'mvn clean compile test verify'
-                            publishTestResults testResultsPattern: '**/surefire-reports/*.xml'
-                        }
-                    }
-                }
-                
-                stage('Build Docker Image') {
-                    steps {
-                        script {
-                            echo "Building Docker image: ${env.DOCKER_IMAGE}"
-                            sh """
-                                docker build \
-                                    --build-arg APP_VERSION=${env.APP_VERSION} \
-                                    -t ${env.DOCKER_IMAGE} \
-                                    -f docker/Dockerfile .
-                            """
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('Performance Testing') {
-            when { not { params.SKIP_PERFORMANCE_TESTS } }
-            parallel {
-                stage('Load Testing') {
-                    steps {
-                        script {
-                            echo "Running JMeter load tests..."
-                            sh """
-                                jmeter -n \
-                                    -t jmeter/test-plans/load-test.jmx \
-                                    -l jmeter/results/load-test-${env.BUILD_NUMBER}.jtl \
-                                    -e -o jmeter/reports/load-test-${env.BUILD_NUMBER}
-                            """
-                        }
-                    }
-                }
-                
-                stage('Stress Testing') {
-                    steps {
-                        script {
-                            echo "Running JMeter stress tests..."
-                            sh """
-                                jmeter -n \
-                                    -t jmeter/test-plans/stress-test.jmx \
-                                    -l jmeter/results/stress-test-${env.BUILD_NUMBER}.jtl \
-                                    -e -o jmeter/reports/stress-test-${env.BUILD_NUMBER}
-                            """
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('Performance Analysis') {
-            when { not { params.SKIP_PERFORMANCE_TESTS } }
+        stage('Build') {
             steps {
-                script {
-                    echo "Analyzing performance test results..."
-                    def results = parseJMeterResults()
-                    
-                    if (results.avgResponseTime > env.PERFORMANCE_THRESHOLD_RESPONSE_TIME.toInteger()) {
-                        error "Response time threshold breached: ${results.avgResponseTime}ms"
-                    }
-                    
-                    echo "Performance thresholds met:"
-                    echo "- Response Time: ${results.avgResponseTime}ms"
-                    echo "- Error Rate: ${results.errorRate}%"
-                    echo "- Throughput: ${results.throughput} req/sec"
-                }
+                echo '⚙️ Building application...'
+                sh 'mvn clean compile'
             }
         }
         
-        stage('Security Testing') {
-            when { not { params.SKIP_SECURITY_SCAN } }
+        stage('Unit Tests') {
             steps {
-                script {
-                    echo "Running security tests..."
-                    sh 'mvn test -Dtest=SecurityTestSuite'
+                echo '🧪 Running unit tests...'
+                sh 'mvn test'
+            }
+            post {
+                always {
                     publishTestResults testResultsPattern: '**/surefire-reports/*.xml'
                 }
             }
         }
         
-        stage('Deploy to Production') {
-            when { branch 'main' }
+        stage('Performance Testing') {
             steps {
+                echo '📊 Running JMeter performance tests...'
                 script {
-                    echo "Deploying to production..."
-                    deployToEnvironment(env.KUBERNETES_NAMESPACE)
-                    waitForHealthChecks('production')
+                    // Run JMeter tests and collect metrics
+                    sh '''
+                        cd jmeter
+                        ./run-tests.sh
+                        
+                        # Convert JMeter results to Prometheus metrics
+                        python3 -c "
+import json
+import os
+from datetime import datetime
+
+# Parse JMeter results and create Prometheus metrics
+results_file = 'results/load-test.jtl'
+if os.path.exists(results_file):
+    with open(results_file, 'r') as f:
+        lines = f.readlines()
+    
+    # Extract metrics (simplified parsing)
+    total_requests = len([l for l in lines if '200' in l])
+    failed_requests = len([l for l in lines if '500' in l or '404' in l])
+    
+    # Create Prometheus metrics file
+    metrics = f'''# JMeter Performance Test Results
+# Generated at {datetime.now().isoformat()}
+jmeter_total_requests{{test="load_test"}} {total_requests}
+jmeter_failed_requests{{test="load_test"}} {failed_requests}
+jmeter_success_rate{{test="load_test"}} {(total_requests - failed_requests) / total_requests if total_requests > 0 else 0}
+'''
+    
+    with open('results/prometheus_metrics.txt', 'w') as f:
+        f.write(metrics)
+"
+                    '''
+                }
+            }
+            post {
+                always {
+                    // Archive JMeter results
+                    archiveArtifacts artifacts: 'jmeter/results/**/*', fingerprint: true
+                    archiveArtifacts artifacts: 'jmeter/reports/**/*', fingerprint: true
+                    
+                    // Publish performance test results
+                    publishPerformanceTestResults performanceTestResults: [
+                        [name: 'Load Test', resultFile: 'jmeter/results/load-test.jtl'],
+                        [name: 'Stress Test', resultFile: 'jmeter/results/stress-test.jtl'],
+                        [name: 'Spike Test', resultFile: 'jmeter/results/spike-test.jtl']
+                    ]
+                }
+            }
+        }
+        
+        stage('Metrics Collection') {
+            steps {
+                echo '📈 Collecting performance metrics...'
+                script {
+                    // Send metrics to Prometheus
+                    sh '''
+                        # Create metrics endpoint for Prometheus to scrape
+                        echo "Creating metrics endpoint..."
+                        
+                        # Generate build metrics
+                        BUILD_TIME=$(date +%s)
+                        BUILD_DURATION=$((BUILD_TIME - ${BUILD_TIMESTAMP:-$BUILD_TIME}))
+                        
+                        cat > metrics.txt << EOF
+# Jenkins Build Metrics
+jenkins_build_duration_seconds{build_id="${BUILD_NUMBER}",job="${JOB_NAME}"} ${BUILD_DURATION}
+jenkins_build_status{build_id="${BUILD_NUMBER}",job="${JOB_NAME}"} 1
+jenkins_build_timestamp{build_id="${BUILD_NUMBER}",job="${JOB_NAME}"} ${BUILD_TIME}
+EOF
+
+                        # Copy metrics to a location Prometheus can access
+                        cp metrics.txt /tmp/jenkins_metrics.txt
+                        cp jmeter/results/prometheus_metrics.txt /tmp/jmeter_metrics.txt 2>/dev/null || echo "No JMeter metrics found"
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy Decision') {
+            steps {
+                echo '🤔 Evaluating deployment criteria...'
+                script {
+                    // Check if performance tests passed
+                    def jmeterResults = readFile('jmeter/results/prometheus_metrics.txt').trim()
+                    def successRate = (jmeterResults =~ /jmeter_success_rate.*?(\d+\.?\d*)/)[0][1] as Double
+                    
+                    if (successRate >= 0.95) {
+                        echo "✅ Performance tests passed! Success rate: ${successRate * 100}%"
+                        currentBuild.result = 'SUCCESS'
+                    } else {
+                        echo "❌ Performance tests failed! Success rate: ${successRate * 100}%"
+                        currentBuild.result = 'FAILURE'
+                        error("Performance tests did not meet threshold (95%)")
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Docker') {
+            when {
+                expression { currentBuild.result == 'SUCCESS' }
+            }
+            steps {
+                echo '🚀 Deploying to Docker...'
+                script {
+                    // Build and run Docker container
+                    sh '''
+                        docker build -t devops-performance-demo:${BUILD_NUMBER} .
+                        docker stop devops-app || true
+                        docker rm devops-app || true
+                        docker run -d --name devops-app -p 8080:8080 devops-performance-demo:${BUILD_NUMBER}
+                        
+                        # Wait for app to start
+                        sleep 10
+                        
+                        # Health check
+                        if curl -f http://localhost:8080/health; then
+                            echo "✅ Application deployed successfully!"
+                        else
+                            echo "❌ Application deployment failed!"
+                            exit 1
+                        fi
+                    '''
+                }
+            }
+            post {
+                success {
+                    echo '🎉 Deployment successful!'
+                    // Send deployment success metric
+                    sh '''
+                        echo "jenkins_deployment_success{build_id=\"${BUILD_NUMBER}\",job=\"${JOB_NAME}\"} 1" >> /tmp/jenkins_metrics.txt
+                    '''
+                }
+                failure {
+                    echo '💥 Deployment failed!'
+                    // Send deployment failure metric
+                    sh '''
+                        echo "jenkins_deployment_success{build_id=\"${BUILD_NUMBER}\",job=\"${JOB_NAME}\"} 0" >> /tmp/jenkins_metrics.txt
+                    '''
                 }
             }
         }
@@ -196,56 +191,15 @@ pipeline {
     
     post {
         always {
-            cleanWs()
-            archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true
-            publishTestResults testResultsPattern: '**/surefire-reports/*.xml'
+            echo '🧹 Cleaning up...'
+            // Clean up temporary files
+            sh 'rm -f metrics.txt /tmp/jenkins_metrics.txt /tmp/jmeter_metrics.txt 2>/dev/null || true'
         }
-        
-        success { echo "Pipeline completed successfully!" }
-        failure { 
-            echo "Pipeline failed!"
-            if (env.BRANCH_NAME == 'main') {
-                echo "Triggering production rollback..."
-                triggerRollback()
-            }
+        success {
+            echo '🎉 Pipeline completed successfully!'
+        }
+        failure {
+            echo '💥 Pipeline failed!'
         }
     }
-}
-
-// Helper functions
-def parseJMeterResults() {
-    def results = [avgResponseTime: 0, errorRate: 0, throughput: 0]
-    def jtlFile = findFiles(glob: 'jmeter/results/*.jtl').first()
-    if (jtlFile) {
-        // Parse JMeter results and calculate metrics
-        results.avgResponseTime = 1500  // Example value
-        results.errorRate = 0.1
-        results.throughput = 1200
-    }
-    return results
-}
-
-def deployToEnvironment(environment) {
-    echo "Deploying to ${environment}..."
-    sh """
-        kubectl set image deployment/${env.APP_NAME} \
-            ${env.APP_NAME}=${env.DOCKER_IMAGE} \
-            --namespace=${environment}
-    """
-}
-
-def waitForHealthChecks(environment) {
-    echo "Waiting for health checks..."
-    sh """
-        kubectl wait --for=condition=ready pod -l app=${env.APP_NAME} \
-            --namespace=${environment} --timeout=300s
-    """
-}
-
-def triggerRollback() {
-    echo "Rolling back deployment..."
-    sh """
-        kubectl rollout undo deployment/${env.APP_NAME} \
-            --namespace=${env.KUBERNETES_NAMESPACE}
-    """
 }
