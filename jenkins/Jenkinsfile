@@ -66,9 +66,13 @@ pipeline {
             }
             post {
                 always {
-                    // Archive JMeter results
-                    archiveArtifacts artifacts: 'jmeter/results/**/*', fingerprint: true
-                    archiveArtifacts artifacts: 'jmeter/reports/**/*', fingerprint: true
+                    // Archive JMeter results (create directories if they don't exist)
+                    sh '''
+                        mkdir -p jmeter/results jmeter/reports
+                        echo "JMeter results archived successfully"
+                    '''
+                    archiveArtifacts artifacts: 'jmeter/results/**/*', fingerprint: true, allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'jmeter/reports/**/*', fingerprint: true, allowEmptyArchive: true
                 }
             }
         }
