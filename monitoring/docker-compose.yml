@@ -124,14 +124,12 @@ services:
       - "50000:50000"
     environment:
       - JMETER_ARGS=-Dserver.rmi.ssl.disable=true -Djava.awt.headless=true
-      - DISPLAY=:99
     volumes:
       - ./jmeter/test-plans/:/jmeter/test-plans/
       - ./jmeter/results/:/jmeter/results/
     restart: unless-stopped
     networks:
       - monitoring
-    command: ["sh", "-c", "Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & sleep 2 && /entrypoint.sh"]
 
   # JMeter Slave - Performance Testing
   jmeter-slave:
@@ -139,7 +137,6 @@ services:
     container_name: jmeter-slave
     environment:
       - JMETER_ARGS=-Dserver.rmi.ssl.disable=true -Djava.awt.headless=true
-      - DISPLAY=:99
     volumes:
       - ./jmeter/test-plans/:/jmeter/test-plans/
       - ./jmeter/results/:/jmeter/results/
@@ -148,7 +145,6 @@ services:
       - monitoring
     depends_on:
       - jmeter-master
-    command: ["sh", "-c", "Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & sleep 2 && /entrypoint.sh"]
 
   # Node Exporter - System Metrics
   node-exporter:

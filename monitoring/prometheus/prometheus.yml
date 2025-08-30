@@ -4,7 +4,7 @@ global:
   external_labels:
     cluster: 'production-cluster'
     environment: 'production'
-
+ 
 rule_files:
   - "rules/*.yml"
 
@@ -25,7 +25,7 @@ scrape_configs:
   # Jenkins metrics
   - job_name: 'jenkins'
     static_configs:
-      - targets: ['jenkins:8080']
+      - targets: ['host.docker.internal:9091']
     metrics_path: '/prometheus'
     scrape_interval: 30s
     scrape_timeout: 10s
@@ -91,22 +91,22 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
-  # Blackbox monitoring for HTTP endpoints
-  - job_name: 'blackbox-http'
-    metrics_path: /probe
-    params:
-      module: [http_2xx]
-    static_configs:
-      - targets:
-        - http://app:8080/health
-        - http://app:8080/actuator/health
-        - http://jenkins:8080
-        - http://grafana:3000
-        - http://kibana:5601
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: blackbox:9115
+  # Blackbox monitoring for HTTP endpoints (commented out due to DNS issues)
+  # - job_name: 'blackbox-http'
+  #   metrics_path: /probe
+  #   params:
+  #     module: [http_2xx]
+  #   static_configs:
+  #     - targets:
+  #       - http://app:8080/health
+  #       - http://app:8080/actuator/health
+  #       - http://jenkins:8080
+  #       - http://grafana:3000
+  #       - http://kibana:5601
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox:9115
