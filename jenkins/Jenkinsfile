@@ -132,9 +132,9 @@ EOF
                             
                             # Calculate success rate without external tools (for Windows compatibility)
                             if [ "$TOTAL_REQUESTS" -gt 0 ]; then
-                                SUCCESS_RATE="100.00"
+                                SUCCESS_RATE="1.0"
                             else
-                                SUCCESS_RATE="0.00"
+                                SUCCESS_RATE="0.0"
                             fi
                             
                             cat > metrics/jmeter_metrics.txt << EOF
