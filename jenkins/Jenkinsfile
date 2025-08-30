@@ -101,9 +101,15 @@ EOF
 
                         # Generate JMeter metrics (simplified)
                         if [ -f "jmeter/results/load-test.jtl" ]; then
-                            TOTAL_REQUESTS=$(grep -c "200" jmeter/results/load-test.jtl || echo "0")
-                            FAILED_REQUESTS=$(grep -c "500" jmeter/results/load-test.jtl || echo "0")
-                            FAILED_REQUESTS_404=$(grep -c "404" jmeter/results/load-test.jtl || echo "0")
+                            TOTAL_REQUESTS=$(grep -c "200" jmeter/results/load-test.jtl 2>/dev/null || echo "0")
+                            FAILED_REQUESTS=$(grep -c "500" jmeter/results/load-test.jtl 2>/dev/null || echo "0")
+                            FAILED_REQUESTS_404=$(grep -c "404" jmeter/results/load-test.jtl 2>/dev/null || echo "0")
+                            
+                            # Ensure variables are clean numbers
+                            TOTAL_REQUESTS=$(echo "$TOTAL_REQUESTS" | tr -d '\n\r')
+                            FAILED_REQUESTS=$(echo "$FAILED_REQUESTS" | tr -d '\n\r')
+                            FAILED_REQUESTS_404=$(echo "$FAILED_REQUESTS_404" | tr -d '\n\r')
+                            
                             TOTAL_FAILED=$((FAILED_REQUESTS + FAILED_REQUESTS_404))
                             
                             cat > metrics/jmeter_metrics.txt << EOF
